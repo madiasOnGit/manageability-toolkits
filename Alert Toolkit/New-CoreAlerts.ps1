@@ -454,6 +454,83 @@ function Update-WorkspacePerfCollection
 	Write-Verbose "Exiting function: 'Update-WorkspacePerfCollection'"
 }
 
+function Update-WorkspacePerfCollectionLinux
+{
+	param
+	(
+		[Parameter(Mandatory=$true)]
+		$Workspace,
+		
+		[Parameter(Mandatory=$true)]
+		[PSCustomObject]$PerfCollectionConfigLinux
+	)
+	# Configure log analytics workspace with specified performance counter collections
+
+
+	Write-Verbose "Entering function: 'Update-WorkspacePerfCollectionLinux'"
+
+	Write-Verbose "Getting current Linux Performance configuration from workspace"
+	$CurrentLinuxPerfConfig = Get-AzureRmOperationalInsightsDataSource -Workspace $Workspace -Kind LinuxPerformanceObject | Select-Object Name, @{n='ObjectName'; e={ $_.Properties.ObjectName }}, @{n='InstanceName'; e={$_.Properties.InstanceName }}, @{n='IntervalSeconds'; e={$_.Properties.IntervalSeconds }}, @{n='CounterNames'; e={$_.Properties.performanceCounters }}
+
+	$PerfCollectionConfigLinux | %{
+
+		# Get configuration if this performance counter is already configured in the log analytics workspace
+		$currentObject = $_
+		$ThisPerfCollector = $CurrentLinuxPerfConfig | Where-Object {$_.ObjectName -eq $currentObject.ObjectName}
+		if ( -not $ThisPerfCollector )
+		{
+			Write-Verbose "Perf collector not configured";
+
+			# Build the name in the format log analytics expects
+			$NewDataSourceName = "DataSource_PerfCounter_$(  (New-Guid).ToString() )"
+			Write-Verbose $NewDataSourceName
+
+			# Configure the event in the specified workspace
+			New-AzureRmOperationalInsightsLinuxPerformanceObjectDataSource `
+			-Workspace $Workspace `
+			-Name $NewDataSourceName `
+			-ObjectName $currentObject.ObjectName `
+			-InstanceName $currentObject.InstanceName `
+			-IntervalSeconds $currentObject.intervalSeconds `
+			-CounterNames $(($currentObject.CounterNames).countername) | Out-Null
+
+		}
+		else
+		{
+			
+			Write-Verbose "Object exists - force update on $($ThisPerfCollector.Name)"
+			
+			# Build the name in the format log analytics expects
+			$ExistingDataSourceName = $ThisPerfCollector.Name
+			Write-Verbose $ExistingDataSourceName
+
+			#Build list of Counter Names
+			$p = New-Object System.Collections.ArrayList
+			
+			#Existing Counters
+			$(($ThisPerfCollector.CounterNames).countername) | % { $p.add($_)>$null}
+			
+			#New Counters
+			$(($currentObject.CounterNames).countername) | % { 
+				if(!($p.contains($_))){$p.add($_)>$null}
+			}
+			
+			# Configure the performance object in the specified workspace
+			New-AzureRmOperationalInsightsLinuxPerformanceObjectDataSource `
+			-Workspace $Workspace `
+			-Name $ExistingDataSourceName `
+			-ObjectName $currentObject.ObjectName `
+			-InstanceName $currentObject.InstanceName `
+			-IntervalSeconds $currentObject.intervalSeconds `
+			-CounterNames $($p.ToArray()) -Force | Out-Null
+
+		}
+
+	}
+
+	Write-Verbose "Exiting function: 'Update-WorkspacePerfCollection'"
+}
+
 function Login
 {
 	# Attempt to login to Azure
@@ -695,6 +772,10 @@ Update-WorkspacePerfCollection `
 	-Workspace $workspace `
 	-PerfCollectionConfig $alertConfig.PerformanceCounters
 
+Write-Host "Configuring Linux performance counter collections..."
+Update-WorkspacePerfCollectionLinux `
+	-Workspace $workspace `
+	-PerfCollectionConfig $alertConfig.PerformanceCountersLinux
 
 ##### Begin creating alerts
 
