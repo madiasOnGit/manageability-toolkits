@@ -756,5 +756,19 @@
 			"InstanceName":  "*",
 			"intervalSeconds":  300
 		}
+	],
+	"PerformanceCountersLinux": [
+	{
+		"ObjectName":  "Logical Disk",
+		"CounterNames":  [{"CounterName":"% Used Space"},{"CounterName":"Free Megabytes"}],
+		"InstanceName":  "*",
+		"intervalSeconds":  300
+	},
+	{
+		"ObjectName":  "Memory",
+		"CounterNames":  {"CounterName":"% Used Memory"},
+		"InstanceName":  "*",
+		"intervalSeconds":  300
+	}
 	]
 }
